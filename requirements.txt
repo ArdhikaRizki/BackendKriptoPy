@@ -1,0 +1,16 @@
+# Web Framework
+Flask==3.0.0
+Flask-CORS==4.0.0
+
+# Database
+mysql-connector-python==8.3.0
+
+# Image Processing (untuk steganografi)
+Pillow>=11.1.0,<12.0.0
+
+# Cryptography (untuk DES, AES, etc)
+pycryptodome==3.20.0
+
+# Note: MD5 hashing menggunakan hashlib (built-in Python, tidak perlu install)
+# Utilities (opsional, jika ingin load .env otomatis)
+# python-dotenv==1.0.0
