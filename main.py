@@ -1202,8 +1202,9 @@ if __name__ == '__main__':
     config.display_config()
     print("="*50 + "\n")
     
+  # Production settings - hardcoded to avoid config caching issues
     app.run(
-        host=config.flask_host,
-        port=config.flask_port,
-        debug=config.flask_debug
+        host='0.0.0.0',  # Listen on all network interfaces
+        port=5000,       # Standard port
+        debug=False      # Disable debug in production
     )
