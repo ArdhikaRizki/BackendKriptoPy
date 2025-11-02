@@ -11,6 +11,7 @@ API untuk fitur pengiriman pesan antar user (seperti email internal).
 - [Delete Message](#5-delete-message)
 - [Get Conversation](#6-get-conversation)
 - [Search Messages](#7-search-messages)
+- [Download Attachment](#8-download-attachment)
 - [Error Handling](#error-handling)
 - [Flutter Integration](#flutter-integration)
 
@@ -20,23 +21,28 @@ API untuk fitur pengiriman pesan antar user (seperti email internal).
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/messages/send` | Kirim pesan ke user lain |
+| POST | `/api/messages/send` | Kirim pesan ke user lain (text + optional files) |
 | GET | `/api/messages/inbox` | Ambil pesan masuk (inbox) |
 | GET | `/api/messages/sent` | Ambil pesan terkirim |
 | GET | `/api/messages/<id>` | Ambil detail pesan |
 | DELETE | `/api/messages/<id>` | Hapus pesan |
 | GET | `/api/messages/conversation/<user_id>` | Ambil percakapan dengan user |
 | GET | `/api/messages/search` | Cari pesan berdasarkan keyword |
+| GET | `/api/messages/attachments/<id>` | Download file attachment |
 
 ---
 
 ## 1. Send Message
 
-Kirim pesan ke user lain.
+Kirim pesan ke user lain (dengan optional file attachment).
 
 **Endpoint:** `POST /api/messages/send`
 
-### Request Body
+### Mode 1: Text Only (JSON)
+
+Untuk kirim pesan text saja tanpa attachment.
+
+**Request Body (JSON):**
 ```json
 {
   "sender_id": 1,
@@ -45,7 +51,7 @@ Kirim pesan ke user lain.
 }
 ```
 
-### Response Success (201)
+**Response Success (201):**
 ```json
 {
   "success": true,
@@ -53,20 +59,13 @@ Kirim pesan ke user lain.
   "data": {
     "message_id": 123,
     "receiver_username": "username",
-    "sent_at": "2025-11-01T10:30:00"
+    "sent_at": "2025-11-01T10:30:00",
+    "encrypted": true
   }
 }
 ```
 
-### Response Error (400)
-```json
-{
-  "success": false,
-  "message": "Penerima tidak ditemukan"
-}
-```
-
-### Postman Example
+**Postman Example (JSON):**
 ```bash
 POST http://localhost:5000/api/messages/send
 Content-Type: application/json
@@ -75,6 +74,86 @@ Content-Type: application/json
   "sender_id": 1,
   "receiver_email": "jane@example.com",
   "message_text": "Meeting hari ini jam 3 sore ya!"
+}
+```
+
+---
+
+### Mode 2: Text + File Attachment (Form-Data)
+
+Untuk kirim pesan dengan file attachment (gambar, dokumen, dll).
+
+**Request Body (Form-Data):**
+- `sender_id`: 1 (required)
+- `receiver_email`: user@example.com (required)
+- `message_text`: Halo, ini ada dokumen penting (required)
+- `files`: [file1.pdf, file2.jpg, ...] (optional, multiple files allowed)
+
+**Supported File Types:**
+- Images: png, jpg, jpeg, gif, bmp, webp
+- Documents: pdf, doc, docx, txt, rtf
+- Archives: zip, rar, 7z
+- Media: mp3, mp4, avi, mov
+- Spreadsheets: xlsx, xls, csv
+
+**Max File Size:** 10MB per file
+
+**Response Success (201):**
+```json
+{
+  "success": true,
+  "message": "Pesan berhasil dikirim dengan 2 attachment",
+  "data": {
+    "message_id": 123,
+    "receiver_username": "jane",
+    "sent_at": "2025-11-01T10:30:00",
+    "encrypted": true,
+    "attachments": [
+      {
+        "id": 1,
+        "filename": "document.pdf",
+        "file_type": "document",
+        "file_size": 102400,
+        "download_url": "/api/messages/attachments/1"
+      },
+      {
+        "id": 2,
+        "filename": "photo.jpg",
+        "file_type": "image",
+        "file_size": 256000,
+        "download_url": "/api/messages/attachments/2"
+      }
+    ]
+  }
+}
+```
+
+**Postman Example (Form-Data):**
+1. Method: POST
+2. URL: `http://localhost:5000/api/messages/send`
+3. Body: form-data
+4. Add fields:
+   - Key: `sender_id` | Value: `1`
+   - Key: `receiver_email` | Value: `jane@example.com`
+   - Key: `message_text` | Value: `Halo, ini dokumen penting`
+   - Key: `files` | Type: File | Value: (select file)
+   - Key: `files` | Type: File | Value: (select another file) ← dapat multiple
+
+**cURL Example:**
+```bash
+curl -X POST http://localhost:5000/api/messages/send \
+  -F "sender_id=1" \
+  -F "receiver_email=jane@example.com" \
+  -F "message_text=Halo, ini dokumen penting" \
+  -F "files=@/path/to/document.pdf" \
+  -F "files=@/path/to/photo.jpg"
+```
+
+### Response Error (400)
+```json
+{
+  "success": false,
+  "message": "Penerima tidak ditemukan"
 }
 ```
 
@@ -108,15 +187,25 @@ GET http://localhost:5000/api/messages/inbox?user_id=1&limit=20&offset=0
         "sender_username": "john",
         "sender_email": "john@example.com",
         "message_text": "Halo! Apa kabar?",
-        "created_at": "2025-11-01T10:30:00"
+        "created_at": "2025-11-01T10:30:00",
+        "attachments": []
       },
       {
         "id": 122,
         "sender_id": 3,
         "sender_username": "alice",
         "sender_email": "alice@example.com",
-        "message_text": "Meeting besok jam 2",
-        "created_at": "2025-11-01T09:15:00"
+        "message_text": "Meeting besok jam 2, lihat dokumen terlampir",
+        "created_at": "2025-11-01T09:15:00",
+        "attachments": [
+          {
+            "id": 5,
+            "filename": "agenda.pdf",
+            "file_type": "document",
+            "file_size": 102400,
+            "download_url": "/api/messages/attachments/5"
+          }
+        ]
       }
     ],
     "total": 100,
@@ -125,6 +214,8 @@ GET http://localhost:5000/api/messages/inbox?user_id=1&limit=20&offset=0
   }
 }
 ```
+
+**Note:** Field `attachments` berisi array attachment. Jika kosong `[]`, berarti tidak ada file.
 
 ---
 
@@ -194,11 +285,22 @@ GET http://localhost:5000/api/messages/123?user_id=1
     "receiver_id": 1,
     "receiver_username": "jane",
     "receiver_email": "jane@example.com",
-    "message_text": "Halo! Apa kabar?",
-    "created_at": "2025-11-01T10:30:00"
+    "message_text": "Halo! Lihat dokumen terlampir",
+    "created_at": "2025-11-01T10:30:00",
+    "attachments": [
+      {
+        "id": 1,
+        "filename": "document.pdf",
+        "file_type": "document",
+        "file_size": 102400,
+        "download_url": "/api/messages/attachments/1"
+      }
+    ]
   }
 }
 ```
+
+**Note:** Field `attachments` berisi array attachment. Jika tidak ada file, akan `[]`.
 
 ### Response Error (404)
 ```json
@@ -341,6 +443,57 @@ GET http://localhost:5000/api/messages/search?user_id=1&keyword=meeting&limit=20
   }
 }
 ```
+
+---
+
+## 8. Download Attachment
+
+Download file attachment dari pesan. Hanya sender dan receiver yang bisa download.
+
+**Endpoint:** `GET /api/messages/attachments/<attachment_id>`
+
+### Query Parameters
+- `user_id` (required): ID user yang download
+
+### Request Example
+```
+GET http://localhost:5000/api/messages/attachments/1?user_id=2
+```
+
+### Response Success (200)
+- **Content-Type**: Application-specific (e.g., `application/pdf`, `image/jpeg`)
+- **Body**: File binary (file akan di-download)
+- **Headers**: `Content-Disposition: attachment; filename="document.pdf"`
+
+### Response Error (404)
+```json
+{
+  "success": false,
+  "message": "Attachment tidak ditemukan atau Anda tidak memiliki akses"
+}
+```
+
+### Postman Download
+1. **Method**: GET
+2. **URL**: `http://localhost:5000/api/messages/attachments/1?user_id=2`
+3. **Click "Send"** → File akan di-download otomatis
+4. Atau klik **"Send and Download"** untuk save file
+
+### Browser Download
+Buka URL di browser untuk download langsung:
+```
+http://localhost:5000/api/messages/attachments/1?user_id=2
+```
+
+### cURL Download
+```bash
+curl -O -J "http://localhost:5000/api/messages/attachments/1?user_id=2"
+```
+
+**Note:** 
+- Download URL didapat dari response saat kirim pesan (field `download_url`)
+- Hanya sender dan receiver yang bisa download
+- User lain akan dapat error 404
 
 ---
 
@@ -736,25 +889,29 @@ class _InboxScreenState extends State<InboxScreen> {
 
 ## 🎯 Features Summary
 
-✅ **Send Message** - Kirim pesan ke user lain via email  
-✅ **Inbox** - Lihat pesan masuk dengan pagination  
+✅ **Send Message** - Kirim pesan ke user lain via email (text + optional files)  
+✅ **File Attachment** - Upload multiple files (max 10MB, 20+ file types)  
+✅ **Download Attachment** - Download files dengan access control  
+✅ **Inbox** - Lihat pesan masuk dengan pagination & attachments  
 ✅ **Sent Messages** - Lihat pesan terkirim  
-✅ **Message Detail** - Lihat detail pesan lengkap  
-✅ **Delete Message** - Hapus pesan (sender atau receiver)  
+✅ **Message Detail** - Lihat detail pesan lengkap dengan attachments  
+✅ **Delete Message** - Hapus pesan + attachments (sender atau receiver)  
 ✅ **Conversation** - Lihat percakapan dengan user tertentu  
 ✅ **Search** - Cari pesan berdasarkan keyword  
 ✅ **Privacy** - User hanya bisa akses pesan mereka sendiri  
 ✅ **Pagination** - Support limit & offset  
+✅ **DES Encryption** - Pesan terenkripsi dengan DES  
 
 ---
 
 ## 💡 Tips
 
-1. **Enkripsi Pesan**: Gunakan steganography untuk menyembunyikan pesan dalam gambar
-2. **Attachment**: Tabel `message_attachments` sudah siap untuk fitur attachment
+1. **Enkripsi Pesan**: Semua pesan otomatis terenkripsi dengan DES
+2. **Attachment Security**: File hanya bisa didownload oleh sender/receiver
 3. **Real-time**: Bisa ditambahkan WebSocket untuk real-time messaging
 4. **Read Status**: Bisa ditambahkan kolom `is_read` di tabel messages
 5. **Soft Delete**: Bisa ditambahkan kolom `deleted_at` untuk soft delete
+6. **File Types**: Support images, documents, archives, media, spreadsheets
 
 ---
 

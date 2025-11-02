@@ -130,10 +130,25 @@ class MessageService:
 
         messages = self.db.execute_read_dict(query, (user_id, limit, offset))
 
-        # 🔓 DEKRIPSI SETIAP PESAN
+        # 🔓 DEKRIPSI SETIAP PESAN + AMBIL ATTACHMENTS
         if messages:
             for msg in messages:
                 msg['message_text'] = self._decrypt_message(msg['message_text'])
+                
+                # Get attachments untuk message ini
+                att_query = """
+                SELECT id, filename, file_type, file_size
+                FROM message_attachments
+                WHERE message_id = %s
+                """
+                attachments = self.db.execute_read_dict(att_query, (msg['id'],))
+                
+                if attachments:
+                    for att in attachments:
+                        att['download_url'] = f"/api/messages/attachments/{att['id']}"
+                    msg['attachments'] = attachments
+                else:
+                    msg['attachments'] = []
 
         # Hitung total pesan
         count_query = "SELECT COUNT(*) as total FROM messages WHERE receiver_id = %s"
@@ -236,9 +251,24 @@ class MessageService:
                 'message': 'Pesan tidak ditemukan atau Anda tidak memiliki akses'
             }
 
-        # 🔓 DEKRIPSI PESAN
+        # 🔓 DEKRIPSI PESAN + AMBIL ATTACHMENTS
         message_data = result[0]
         message_data['message_text'] = self._decrypt_message(message_data['message_text'])
+        
+        # Get attachments
+        att_query = """
+        SELECT id, filename, file_type, file_size
+        FROM message_attachments
+        WHERE message_id = %s
+        """
+        attachments = self.db.execute_read_dict(att_query, (message_id,))
+        
+        if attachments:
+            for att in attachments:
+                att['download_url'] = f"/api/messages/attachments/{att['id']}"
+            message_data['attachments'] = attachments
+        else:
+            message_data['attachments'] = []
 
         return {
             'success': True,
@@ -270,9 +300,8 @@ class MessageService:
                 'message': 'Pesan tidak ditemukan atau Anda tidak memiliki akses'
             }
 
-        # Hapus attachments terlebih dahulu (jika ada)
-        delete_attachments = "DELETE FROM message_attachments WHERE message_id = %s"
-        self.db.execute_query(delete_attachments, (message_id,))
+        # Hapus attachments terlebih dahulu (files + DB)
+        self.delete_attachments(message_id)
 
         # Hapus pesan
         delete_query = "DELETE FROM messages WHERE id = %s"
@@ -419,6 +448,102 @@ class MessageService:
                 'total': len(results)
             }
         }
+
+    def add_attachment(self, message_id, filename, file_path, file_type, file_size):
+        """
+        Simpan metadata attachment ke database.
+        
+        Args:
+            message_id: ID pesan
+            filename: Nama file original
+            file_path: Path file di server
+            file_type: Tipe file (image, document, dll)
+            file_size: Ukuran file (bytes)
+        
+        Returns:
+            ID attachment yang baru dibuat
+        """
+        query = """
+        INSERT INTO message_attachments 
+        (message_id, filename, file_path, file_type, file_size, created_at)
+        VALUES (%s, %s, %s, %s, %s, NOW())
+        """
+        
+        result = self.db.execute_write_query(
+            query, 
+            (message_id, filename, file_path, file_type, file_size)
+        )
+        
+        # Get last insert ID
+        last_id_query = "SELECT LAST_INSERT_ID() as id"
+        last_id = self.db.execute_read_dict(last_id_query)
+        
+        if last_id:
+            return last_id[0]['id']
+        return None
+
+    def get_attachment(self, attachment_id, user_id):
+        """
+        Ambil info attachment dengan validasi akses (hanya sender/receiver).
+        
+        Args:
+            attachment_id: ID attachment
+            user_id: ID user yang akses
+        
+        Returns:
+            Dictionary attachment info atau None jika tidak ada akses
+        """
+        query = """
+        SELECT 
+            a.id,
+            a.message_id,
+            a.filename,
+            a.file_path,
+            a.file_type,
+            a.file_size,
+            a.created_at,
+            m.sender_id,
+            m.receiver_id
+        FROM message_attachments a
+        JOIN messages m ON a.message_id = m.id
+        WHERE 
+            a.id = %s
+            AND (m.sender_id = %s OR m.receiver_id = %s)
+        """
+        
+        result = self.db.execute_read_dict(query, (attachment_id, user_id, user_id))
+        
+        if result:
+            return result[0]
+        return None
+
+    def delete_attachments(self, message_id):
+        """
+        Hapus semua attachment dari pesan (file + database).
+        
+        Args:
+            message_id: ID pesan
+        """
+        import os
+        
+        # Get all attachments
+        query = "SELECT file_path FROM message_attachments WHERE message_id = %s"
+        attachments = self.db.execute_read_dict(query, (message_id,))
+        
+        # Delete files from disk
+        if attachments:
+            for att in attachments:
+                file_path = att['file_path']
+                if os.path.exists(file_path):
+                    try:
+                        os.remove(file_path)
+                        print(f"🗑️ Deleted file: {file_path}")
+                    except Exception as e:
+                        print(f"⚠️ Failed to delete file {file_path}: {e}")
+        
+        # Delete from database
+        delete_query = "DELETE FROM message_attachments WHERE message_id = %s"
+        self.db.execute_write_query(delete_query, (message_id,))
 
     def _decrypt_message(self, encrypted_data):
         """

@@ -23,12 +23,29 @@ class Config:
     
     def _load_env_file(self):
         """Load environment variables dari file .env"""
-        # Cari file .env di parent directory
+        # Try multiple locations untuk .env file
         current_dir = Path(__file__).parent
-        env_path = current_dir.parent / self.env_file
         
-        if not env_path.exists():
-            print(f"⚠ File {self.env_file} tidak ditemukan, menggunakan default values")
+        # Possible locations (in order of priority)
+        possible_paths = [
+            current_dir / self.env_file,              # python/.env
+            current_dir.parent / self.env_file,       # project_root/.env
+            Path.cwd() / self.env_file,               # current working directory/.env
+            Path(os.getcwd()) / self.env_file,        # alternative cwd/.env
+        ]
+        
+        env_path = None
+        for path in possible_paths:
+            if path.exists():
+                env_path = path
+                print(f"✓ File .env found at: {path}")
+                break
+        
+        if not env_path:
+            print(f"⚠ File {self.env_file} tidak ditemukan di:")
+            for path in possible_paths:
+                print(f"   - {path}")
+            print("⚠ Menggunakan default values atau OS environment variables")
             return
         
         try:

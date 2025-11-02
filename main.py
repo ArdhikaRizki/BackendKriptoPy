@@ -3,15 +3,37 @@ Login & Register API
 Flask API untuk autentikasi user dengan MD5 password hashing + Stateless Steganography
 """
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 from connection import get_db_connection
 from config import config
 from auth import AuthService, hash_password_md5, validate_email
 from message_service import MessageService
 import traceback
+import os
+from werkzeug.utils import secure_filename
+from datetime import datetime
+import uuid
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = config.secret_key
+
+# File Upload Configuration
+UPLOAD_FOLDER = 'uploads/message_attachments'
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+ALLOWED_EXTENSIONS = {
+    'png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp',  # Images
+    'pdf', 'doc', 'docx', 'txt', 'rtf',  # Documents
+    'zip', 'rar', '7z',  # Archives
+    'mp3', 'mp4', 'avi', 'mov',  # Media
+    'xlsx', 'xls', 'csv'  # Spreadsheets
+}
+
+# Create upload folder if not exists
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+def allowed_file(filename):
+    """Check if file extension is allowed"""
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 # Inisialisasi database connection
 db = get_db_connection(**config.get_db_config())
@@ -28,9 +50,10 @@ def index():
     """Homepage API"""
     return jsonify({
         'message': 'Kripto App API - MD5 + Steganography + File Encryption + Super Encrypt',
-        'version': '4.0',
+        'version': '4.1',
         'security': 'MD5 Password Hashing',
         'endpoints': {
+            # User Management
             'users': '/api/users',
             'user_by_id': '/api/users/<id>',
             'login': '/api/login',
@@ -48,26 +71,15 @@ def index():
             'super_encrypt': '/api/super-encrypt',  # Encrypt text: Caesar → Vigenere → DES
             'super_decrypt': '/api/super-decrypt',  # Decrypt text: DES → Vigenere → Caesar
             # Messaging API
-            'send_message': '/api/messages/send',  # POST - Kirim pesan
+            'send_message': '/api/messages/send',  # POST - Kirim pesan (text + optional files)
             'inbox': '/api/messages/inbox',  # GET - Pesan masuk
             'sent_messages': '/api/messages/sent',  # GET - Pesan terkirim
             'message_detail': '/api/messages/<id>',  # GET - Detail pesan
             'delete_message': '/api/messages/<id>',  # DELETE - Hapus pesan
             'conversation': '/api/messages/conversation/<user_id>',  # GET - Percakapan dengan user
             'search_messages': '/api/messages/search',  # GET - Cari pesan
-            'stego_encode': '/api/stego/encode',  # Upload gambar + pesan → return gambar hasil
-            'stego_decode': '/api/stego/decode',  # Upload gambar → return pesan
-            # File Encryption Stateless API (No Database!)
-            'file_encrypt': '/api/file/encrypt',  # Upload file + password → return encrypted file
-            'file_decrypt': '/api/file/decrypt',  # Upload encrypted file + password → return original file
-            # Messaging API
-            'send_message': '/api/messages/send',  # POST - Kirim pesan
-            'inbox': '/api/messages/inbox',  # GET - Pesan masuk
-            'sent_messages': '/api/messages/sent',  # GET - Pesan terkirim
-            'message_detail': '/api/messages/<id>',  # GET - Detail pesan
-            'delete_message': '/api/messages/<id>',  # DELETE - Hapus pesan
-            'conversation': '/api/messages/conversation/<user_id>',  # GET - Percakapan dengan user
-            'search_messages': '/api/messages/search',  # GET - Cari pesan
+            'download_attachment': '/api/messages/attachments/<id>',  # GET - Download file attachment
+            # Test
             'test': '/tes/<name>'
         }
     })
@@ -482,28 +494,43 @@ def hash_password_endpoint():
 @app.route('/api/messages/send', methods=['POST'])
 def send_message():
     """
-    📨 Kirim pesan ke user lain
+    📨 Kirim pesan ke user lain (dengan optional file attachment)
     
-    Request Body:
+    Mode 1 - Text Only (JSON):
     {
         "sender_id": 1,
         "receiver_email": "user@example.com",
-        "message_text": "Halo, ini pesan rahasia!"
+        "message_text": "Halo!"
     }
+    
+    Mode 2 - Text + Files (Form-Data):
+    - sender_id: 1
+    - receiver_email: user@example.com
+    - message_text: Halo, ini ada dokumen
+    - files: [file1.pdf, file2.jpg] (optional, multiple files)
     
     Response:
     {
         "success": true,
-        "message": "Pesan berhasil dikirim ke username",
+        "message": "Pesan berhasil dikirim",
         "data": {
             "message_id": 123,
             "receiver_username": "username",
-            "sent_at": "2025-11-01T10:30:00"
+            "sent_at": "2025-11-01T10:30:00",
+            "attachments": [...]  // Only if files uploaded
         }
     }
     """
     try:
-        data = request.get_json()
+        # Detect mode: JSON or Form-Data
+        if request.is_json:
+            # Mode 1: JSON (Text only)
+            data = request.get_json()
+            files_list = []
+        else:
+            # Mode 2: Form-Data (Text + optional files)
+            data = request.form
+            files_list = request.files.getlist('files') if 'files' in request.files else []
         
         # Validasi input
         if not data or not data.get('sender_id') or not data.get('receiver_email') or not data.get('message_text'):
@@ -512,17 +539,83 @@ def send_message():
                 'message': 'sender_id, receiver_email, dan message_text harus diisi'
             }), 400
         
-        sender_id = data['sender_id']
+        sender_id = int(data['sender_id'])
         receiver_email = data['receiver_email']
         message_text = data['message_text']
         
-        # Kirim pesan
+        # Kirim pesan (tanpa attachment dulu)
         result = message_service.send_message(sender_id, receiver_email, message_text)
         
-        if result['success']:
-            return jsonify(result), 201
-        else:
+        if not result['success']:
             return jsonify(result), 400
+        
+        message_id = result['data']['message_id']
+        attachments = []
+        
+        # Process file uploads (if any)
+        if files_list:
+            for file in files_list:
+                if file and file.filename:
+                    # Check file extension
+                    if not allowed_file(file.filename):
+                        continue
+                    
+                    # Check file size
+                    file.seek(0, os.SEEK_END)
+                    file_size = file.tell()
+                    file.seek(0)
+                    
+                    if file_size > MAX_FILE_SIZE:
+                        continue
+                    
+                    # Generate unique filename
+                    original_filename = secure_filename(file.filename)
+                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    unique_id = str(uuid.uuid4())[:8]
+                    filename = f"{timestamp}_{unique_id}_{original_filename}"
+                    
+                    # Save file
+                    file_path = os.path.join(UPLOAD_FOLDER, filename)
+                    file.save(file_path)
+                    
+                    # Determine file type
+                    ext = original_filename.rsplit('.', 1)[1].lower()
+                    if ext in {'png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp'}:
+                        file_type = 'image'
+                    elif ext in {'pdf', 'doc', 'docx', 'txt', 'rtf'}:
+                        file_type = 'document'
+                    elif ext in {'zip', 'rar', '7z'}:
+                        file_type = 'archive'
+                    elif ext in {'mp3', 'mp4', 'avi', 'mov'}:
+                        file_type = 'media'
+                    elif ext in {'xlsx', 'xls', 'csv'}:
+                        file_type = 'spreadsheet'
+                    else:
+                        file_type = 'other'
+                    
+                    # Save to database
+                    attachment_id = message_service.add_attachment(
+                        message_id=message_id,
+                        filename=original_filename,
+                        file_path=file_path,
+                        file_type=file_type,
+                        file_size=file_size
+                    )
+                    
+                    attachments.append({
+                        'id': attachment_id,
+                        'filename': original_filename,
+                        'file_type': file_type,
+                        'file_size': file_size,
+                        'download_url': f'/api/messages/attachments/{attachment_id}'
+                    })
+        
+        # Update response with attachments
+        if attachments:
+            result['message'] = f"Pesan berhasil dikirim dengan {len(attachments)} attachment"
+            result['data']['attachments'] = attachments
+        
+        return jsonify(result), 201
     
     except Exception as e:
         traceback.print_exc()
@@ -796,6 +889,68 @@ def search_messages():
         
         result = message_service.search_messages(int(user_id), keyword, limit)
         return jsonify(result), 200
+    
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'message': f'Error: {str(e)}'
+        }), 500
+
+
+@app.route('/api/messages/attachments/<int:attachment_id>', methods=['GET'])
+def download_attachment(attachment_id):
+    """
+    📎 Download file attachment dari pesan
+    
+    Query Parameters:
+    - user_id: ID user yang download (required)
+    
+    Example: /api/messages/attachments/1?user_id=2
+    
+    Response:
+    - File binary (download)
+    
+    Error Response:
+    {
+        "success": false,
+        "message": "Attachment tidak ditemukan atau Anda tidak memiliki akses"
+    }
+    """
+    try:
+        user_id = request.args.get('user_id')
+        
+        if not user_id:
+            return jsonify({
+                'success': False,
+                'message': 'user_id harus diisi'
+            }), 400
+        
+        # Get attachment info dengan validasi akses
+        attachment = message_service.get_attachment(attachment_id, int(user_id))
+        
+        if not attachment:
+            return jsonify({
+                'success': False,
+                'message': 'Attachment tidak ditemukan atau Anda tidak memiliki akses'
+            }), 404
+        
+        file_path = attachment['file_path']
+        filename = attachment['filename']
+        
+        # Check if file exists
+        if not os.path.exists(file_path):
+            return jsonify({
+                'success': False,
+                'message': 'File tidak ditemukan di server'
+            }), 404
+        
+        # Send file
+        return send_file(
+            file_path,
+            as_attachment=True,
+            download_name=filename
+        )
     
     except Exception as e:
         traceback.print_exc()
@@ -1202,9 +1357,8 @@ if __name__ == '__main__':
     config.display_config()
     print("="*50 + "\n")
     
-  # Production settings - hardcoded to avoid config caching issues
     app.run(
-        host='0.0.0.0',  # Listen on all network interfaces
-        port=5000,       # Standard port
-        debug=False      # Disable debug in production
+        host=config.flask_host,
+        port=config.flask_port,
+        debug=config.flask_debug
     )
