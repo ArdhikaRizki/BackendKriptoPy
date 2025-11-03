@@ -4,7 +4,6 @@ Flask API untuk autentikasi user dengan MD5 password hashing + Stateless Stegano
 """
 
 from flask import Flask, request, jsonify, send_file
-from flask_cors import CORS
 from connection import get_db_connection
 from config import config
 from auth import AuthService, hash_password_md5, validate_email
@@ -17,15 +16,6 @@ import uuid
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = config.secret_key
-
-# Enable CORS for all routes and origins
-CORS(app, resources={
-    r"/api/*": {
-        "origins": "*",
-        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        "allow_headers": ["Content-Type", "Authorization"]
-    }
-})
 
 # File Upload Configuration
 UPLOAD_FOLDER = 'uploads/message_attachments'
@@ -62,8 +52,6 @@ def index():
         'message': 'Kripto App API - MD5 + Steganography + File Encryption + Super Encrypt',
         'version': '4.1',
         'security': 'MD5 Password Hashing',
-        'status': 'running',
-        'cors': 'enabled',
         'endpoints': {
             # User Management
             'users': '/api/users',
@@ -73,7 +61,6 @@ def index():
             'change_password': '/api/change-password',
             'test_db': '/api/test-db',
             'hash_password': '/api/hash-password',
-            'debug': '/api/debug',
             # Steganography Stateless API (No Database!)
             'stego_encode': '/api/stego/encode',  # Upload gambar + pesan → return gambar hasil
             'stego_decode': '/api/stego/decode',  # Upload gambar → return pesan
@@ -494,41 +481,6 @@ def hash_password_endpoint():
             'password': password,
             'md5_hash': hashed
         })
-    
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': f'Error: {str(e)}'
-        }), 500
-
-
-@app.route('/api/debug', methods=['GET', 'POST', 'OPTIONS'])
-def debug_endpoint():
-    """Debug endpoint untuk troubleshoot request"""
-    try:
-        debug_info = {
-            'success': True,
-            'message': 'Debug endpoint is working!',
-            'request_info': {
-                'method': request.method,
-                'path': request.path,
-                'url': request.url,
-                'headers': dict(request.headers),
-                'args': dict(request.args),
-                'content_type': request.content_type,
-            }
-        }
-        
-        # Add body if present
-        if request.method in ['POST', 'PUT', 'PATCH']:
-            try:
-                debug_info['request_info']['json_body'] = request.get_json()
-            except:
-                debug_info['request_info']['json_body'] = None
-            
-            debug_info['request_info']['raw_data'] = request.get_data(as_text=True)
-        
-        return jsonify(debug_info)
     
     except Exception as e:
         return jsonify({

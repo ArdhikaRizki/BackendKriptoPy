@@ -119,15 +119,15 @@ class Config:
     # Flask Configuration
     @property
     def flask_host(self):
-        return self.get('FLASK_HOST', 'localhost')
+        return '0.0.0.0'
     
     @property
     def flask_port(self):
-        return self.get_int('FLASK_PORT', 5000)
+        return 5000
     
     @property
     def flask_debug(self):
-        return self.get_bool('FLASK_DEBUG', True)
+        return True
     
     @property
     def secret_key(self):

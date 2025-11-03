@@ -469,7 +469,7 @@ class MessageService:
         VALUES (%s, %s, %s, %s, %s, NOW())
         """
         
-        result = self.db.execute_write_query(
+        result = self.db.execute_query(
             query, 
             (message_id, filename, file_path, file_type, file_size)
         )
@@ -543,7 +543,7 @@ class MessageService:
         
         # Delete from database
         delete_query = "DELETE FROM message_attachments WHERE message_id = %s"
-        self.db.execute_write_query(delete_query, (message_id,))
+        self.db.execute_query(delete_query, (message_id,))
 
     def _decrypt_message(self, encrypted_data):
         """
