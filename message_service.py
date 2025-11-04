@@ -113,6 +113,7 @@ class MessageService:
         Returns:
             Dictionary dengan status dan list pesan (decrypted)
         """
+        # Single query dengan LEFT JOIN untuk attachments
         query = """
         SELECT 
             m.id,
@@ -120,35 +121,50 @@ class MessageService:
             u.username as sender_username,
             u.email as sender_email,
             m.message_text,
-            m.created_at
+            m.created_at,
+            a.id as attachment_id,
+            a.filename as attachment_filename,
+            a.file_type as attachment_file_type,
+            a.file_size as attachment_file_size
         FROM messages m
         JOIN users u ON m.sender_id = u.id
+        LEFT JOIN message_attachments a ON m.id = a.message_id
         WHERE m.receiver_id = %s
-        ORDER BY m.created_at DESC
+        ORDER BY m.created_at DESC, a.id ASC
         LIMIT %s OFFSET %s
         """
 
-        messages = self.db.execute_read_dict(query, (user_id, limit, offset))
+        rows = self.db.execute_read_dict(query, (user_id, limit, offset))
 
-        # 🔓 DEKRIPSI SETIAP PESAN + AMBIL ATTACHMENTS
-        if messages:
-            for msg in messages:
-                msg['message_text'] = self._decrypt_message(msg['message_text'])
+        # Group messages dan attachments
+        messages_dict = {}
+        if rows:
+            for row in rows:
+                msg_id = row['id']
                 
-                # Get attachments untuk message ini
-                att_query = """
-                SELECT id, filename, file_type, file_size
-                FROM message_attachments
-                WHERE message_id = %s
-                """
-                attachments = self.db.execute_read_dict(att_query, (msg['id'],))
+                # Jika message belum ada di dict, tambahkan
+                if msg_id not in messages_dict:
+                    messages_dict[msg_id] = {
+                        'id': msg_id,
+                        'sender_id': row['sender_id'],
+                        'sender_username': row['sender_username'],
+                        'sender_email': row['sender_email'],
+                        'message_text': self._decrypt_message(row['message_text']),
+                        'created_at': row['created_at'],
+                        'attachments': []
+                    }
                 
-                if attachments:
-                    for att in attachments:
-                        att['download_url'] = f"/api/messages/attachments/{att['id']}"
-                    msg['attachments'] = attachments
-                else:
-                    msg['attachments'] = []
+                # Tambahkan attachment jika ada
+                if row['attachment_id']:
+                    messages_dict[msg_id]['attachments'].append({
+                        'id': row['attachment_id'],
+                        'filename': row['attachment_filename'],
+                        'file_type': row['attachment_file_type'],
+                        'file_size': row['attachment_file_size'],
+                        'download_url': f"/api/messages/attachments/{row['attachment_id']}"
+                    })
+        
+        messages = list(messages_dict.values())
 
         # Hitung total pesan
         count_query = "SELECT COUNT(*) as total FROM messages WHERE receiver_id = %s"
