@@ -37,11 +37,14 @@ class DatabaseConnection:
                 password=self.password,
                 database=self.database,
                 port=self.port,
-                autocommit=True,  # ← AUTO COMMIT setiap query!
-                pool_name="mypool",
-                pool_size=5
+                autocommit=True  # ← AUTO COMMIT setiap query!
             )
             if self.connection.is_connected():
+                # Set isolation level to READ COMMITTED
+                cursor = self.connection.cursor()
+                cursor.execute("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED")
+                cursor.close()
+                
                 print(f"✓ Koneksi ke MySQL database '{self.database}' berhasil")
                 return self.connection
         except Error as e:
