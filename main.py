@@ -45,6 +45,19 @@ auth_service = AuthService(db)
 message_service = MessageService(db)
 
 
+# Force commit after every request
+@app.after_request
+def after_request(response):
+    """Force commit setelah setiap request"""
+    try:
+        if db.connection and db.connection.is_connected():
+            # Force commit untuk ensure semua changes tersimpan
+            db.connection.commit()
+    except Exception as e:
+        print(f"⚠️ After request commit error: {e}")
+    return response
+
+
 @app.route('/')
 def index():
     """Homepage API"""
@@ -59,8 +72,8 @@ def index():
             'login': '/api/login',
             'register': '/api/register',
             'change_password': '/api/change-password',
-            'test_db': '/api/test-db',
-            'hash_password': '/api/hash-password',
+            # 'test_db': '/api/test-db',
+            # 'hash_password': '/api/hash-password',
             # Steganography Stateless API (No Database!)
             'stego_encode': '/api/stego/encode',  # Upload gambar + pesan → return gambar hasil
             'stego_decode': '/api/stego/decode',  # Upload gambar → return pesan
@@ -76,8 +89,8 @@ def index():
             'sent_messages': '/api/messages/sent',  # GET - Pesan terkirim
             'message_detail': '/api/messages/<id>',  # GET - Detail pesan
             'delete_message': '/api/messages/<id>',  # DELETE - Hapus pesan
-            'conversation': '/api/messages/conversation/<user_id>',  # GET - Percakapan dengan user
-            'search_messages': '/api/messages/search',  # GET - Cari pesan
+            # 'conversation': '/api/messages/conversation/<user_id>',  # GET - Percakapan dengan user
+            # 'search_messages': '/api/messages/search',  # GET - Cari pesan
             'download_attachment': '/api/messages/attachments/<id>',  # GET - Download file attachment
             # Test
             'test': '/tes/<name>'
@@ -85,13 +98,13 @@ def index():
     })
 
 
-@app.route('/tes/<koneksi>')
-def test_endpoint(koneksi):
-    """Test endpoint"""
-    return jsonify({
-        'message': f"Hello, {koneksi}!",
-        'status': 'success'
-    })
+# @app.route('/tes/<koneksi>')
+# def test_endpoint(koneksi):
+#     """Test endpoint"""
+#     return jsonify({
+#         'message': f"Hello, {koneksi}!",
+#         'status': 'success'
+#     })
 
 
 # ==================== STEGANOGRAPHY STATELESS API ====================
@@ -406,27 +419,27 @@ def login():
         }), 500
 
 
-@app.route('/api/test-db', methods=['GET'])
-def test_database():
-    """Test koneksi database"""
-    try:
-        result = db.execute_read_query("SELECT 1 as test")
-        if result:
-            return jsonify({
-                'success': True,
-                'message': 'Koneksi database berhasil',
-                'database': config.db_database
-            })
-        else:
-            return jsonify({
-                'success': False,
-                'message': 'Koneksi database gagal'
-            }), 500
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': f'Error: {str(e)}'
-        }), 500
+# @app.route('/api/test-db', methods=['GET'])
+# def test_database():
+#     """Test koneksi database"""
+#     try:
+#         result = db.execute_read_query("SELECT 1 as test")
+#         if result:
+#             return jsonify({
+#                 'success': True,
+#                 'message': 'Koneksi database berhasil',
+#                 'database': config.db_database
+#             })
+#         else:
+#             return jsonify({
+#                 'success': False,
+#                 'message': 'Koneksi database gagal'
+#             }), 500
+#     except Exception as e:
+#         return jsonify({
+#             'success': False,
+#             'message': f'Error: {str(e)}'
+#         }), 500
 
 
 @app.route('/api/change-password', methods=['POST'])
@@ -461,32 +474,32 @@ def change_password():
         }), 500
 
 
-@app.route('/api/hash-password', methods=['POST'])
-def hash_password_endpoint():
-    """Endpoint untuk hash password (untuk testing/migration)"""
-    try:
-        data = request.get_json()
+# @app.route('/api/hash-password', methods=['POST'])
+# def hash_password_endpoint():
+#     """Endpoint untuk hash password (untuk testing/migration)"""
+#     try:
+#         data = request.get_json()
         
-        if not data or not data.get('password'):
-            return jsonify({
-                'success': False,
-                'message': 'Password harus diisi'
-            }), 400
+#         if not data or not data.get('password'):
+#             return jsonify({
+#                 'success': False,
+#                 'message': 'Password harus diisi'
+#             }), 400
         
-        password = data['password']
-        hashed = hash_password_md5(password)
+#         password = data['password']
+#         hashed = hash_password_md5(password)
         
-        return jsonify({
-            'success': True,
-            'password': password,
-            'md5_hash': hashed
-        })
+#         return jsonify({
+#             'success': True,
+#             'password': password,
+#             'md5_hash': hashed
+#         })
     
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': f'Error: {str(e)}'
-        }), 500
+#     except Exception as e:
+#         return jsonify({
+#             'success': False,
+#             'message': f'Error: {str(e)}'
+#         }), 500
 
 
 # ==================== MESSAGING API ====================
@@ -804,98 +817,98 @@ def delete_message(message_id):
         }), 500
 
 
-@app.route('/api/messages/conversation/<int:other_user_id>', methods=['GET'])
-def get_conversation(other_user_id):
-    """
-    💬 Ambil percakapan dengan user tertentu
+# @app.route('/api/messages/conversation/<int:other_user_id>', methods=['GET'])
+# def get_conversation(other_user_id):
+#     """
+#     💬 Ambil percakapan dengan user tertentu
     
-    Query Parameters:
-    - user_id: ID user yang mengakses (required)
-    - limit: Jumlah pesan (default: 50)
+#     Query Parameters:
+#     - user_id: ID user yang mengakses (required)
+#     - limit: Jumlah pesan (default: 50)
     
-    Example: /api/messages/conversation/2?user_id=1&limit=50
+#     Example: /api/messages/conversation/2?user_id=1&limit=50
     
-    Response:
-    {
-        "success": true,
-        "data": {
-            "other_user": {
-                "id": 2,
-                "username": "jane",
-                "email": "jane@example.com"
-            },
-            "messages": [...],
-            "total": 25
-        }
-    }
-    """
-    try:
-        user_id = request.args.get('user_id')
-        limit = request.args.get('limit', 50, type=int)
+#     Response:
+#     {
+#         "success": true,
+#         "data": {
+#             "other_user": {
+#                 "id": 2,
+#                 "username": "jane",
+#                 "email": "jane@example.com"
+#             },
+#             "messages": [...],
+#             "total": 25
+#         }
+#     }
+#     """
+#     try:
+#         user_id = request.args.get('user_id')
+#         limit = request.args.get('limit', 50, type=int)
         
-        if not user_id:
-            return jsonify({
-                'success': False,
-                'message': 'user_id harus diisi'
-            }), 400
+#         if not user_id:
+#             return jsonify({
+#                 'success': False,
+#                 'message': 'user_id harus diisi'
+#             }), 400
         
-        result = message_service.get_conversation(int(user_id), other_user_id, limit)
+#         result = message_service.get_conversation(int(user_id), other_user_id, limit)
         
-        if result['success']:
-            return jsonify(result), 200
-        else:
-            return jsonify(result), 404
+#         if result['success']:
+#             return jsonify(result), 200
+#         else:
+#             return jsonify(result), 404
     
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({
-            'success': False,
-            'message': f'Error: {str(e)}'
-        }), 500
+#     except Exception as e:
+#         traceback.print_exc()
+#         return jsonify({
+#             'success': False,
+#             'message': f'Error: {str(e)}'
+#         }), 500
 
 
-@app.route('/api/messages/search', methods=['GET'])
-def search_messages():
-    """
-    🔍 Cari pesan berdasarkan keyword
+# @app.route('/api/messages/search', methods=['GET'])
+# def search_messages():
+#     """
+#     🔍 Cari pesan berdasarkan keyword
     
-    Query Parameters:
-    - user_id: ID user (required)
-    - keyword: Kata kunci pencarian (required)
-    - limit: Jumlah hasil (default: 50)
+#     Query Parameters:
+#     - user_id: ID user (required)
+#     - keyword: Kata kunci pencarian (required)
+#     - limit: Jumlah hasil (default: 50)
     
-    Example: /api/messages/search?user_id=1&keyword=meeting&limit=20
+#     Example: /api/messages/search?user_id=1&keyword=meeting&limit=20
     
-    Response:
-    {
-        "success": true,
-        "data": {
-            "keyword": "meeting",
-            "results": [...],
-            "total": 5
-        }
-    }
-    """
-    try:
-        user_id = request.args.get('user_id')
-        keyword = request.args.get('keyword')
-        limit = request.args.get('limit', 50, type=int)
+#     Response:
+#     {
+#         "success": true,
+#         "data": {
+#             "keyword": "meeting",
+#             "results": [...],
+#             "total": 5
+#         }
+#     }
+#     """
+#     try:
+#         user_id = request.args.get('user_id')
+#         keyword = request.args.get('keyword')
+#         limit = request.args.get('limit', 50, type=int)
         
-        if not user_id or not keyword:
-            return jsonify({
-                'success': False,
-                'message': 'user_id dan keyword harus diisi'
-            }), 400
+#         if not user_id or not keyword:
+#             return jsonify({
+#                 'success': False,
+#                 'message': 'user_id dan keyword harus diisi'
+#             }), 400
         
-        result = message_service.search_messages(int(user_id), keyword, limit)
-        return jsonify(result), 200
+#         result = message_service.search_messages(int(user_id), keyword, limit)
+#         return jsonify(result), 200
     
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({
-            'success': False,
-            'message': f'Error: {str(e)}'
-        }), 500
+#     except Exception as e:
+#         traceback.print_exc()
+#         return jsonify({
+#             'success': False,
+#             'message': f'Error: {str(e)}'
+#         }), 500
 
 
 @app.route('/api/messages/attachments/<int:attachment_id>', methods=['GET'])

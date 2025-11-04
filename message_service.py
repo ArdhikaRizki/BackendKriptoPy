@@ -80,9 +80,6 @@ class MessageService:
         success = self.db.execute_query(insert_query, (sender_id, receiver_id, encrypted_data))
 
         if success:
-            # Force flush untuk ensure data tersimpan
-            self.db.connection.commit()
-            
             # Ambil ID pesan yang baru dibuat
             message_id_query = "SELECT LAST_INSERT_ID() as message_id"
             result = self.db.execute_read_dict(message_id_query)
@@ -476,10 +473,6 @@ class MessageService:
             query, 
             (message_id, filename, file_path, file_type, file_size)
         )
-        
-        # Force commit
-        if result:
-            self.db.connection.commit()
         
         # Get last insert ID
         last_id_query = "SELECT LAST_INSERT_ID() as id"
