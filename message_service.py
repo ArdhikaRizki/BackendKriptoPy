@@ -77,14 +77,9 @@ class MessageService:
         VALUES (%s, %s, %s)
         """
 
-        success = self.db.execute_query(insert_query, (sender_id, receiver_id, encrypted_data))
+        message_id = self.db.execute_insert(insert_query, (sender_id, receiver_id, encrypted_data))
 
-        if success:
-            # Ambil ID pesan yang baru dibuat
-            message_id_query = "SELECT LAST_INSERT_ID() as message_id"
-            result = self.db.execute_read_dict(message_id_query)
-            message_id = result[0]['message_id'] if result else None
-
+        if message_id:
             return {
                 'success': True,
                 'message': f'Pesan berhasil dikirim ke {receiver_username} (encrypted with DES)',
@@ -485,29 +480,18 @@ class MessageService:
         VALUES (%s, %s, %s, %s, %s)
         """
         
-        # ✅ CEK hasil execute_query (True/False)
-        success = self.db.execute_query(
+        # 🆕 Pakai execute_insert() yang return last_insert_id langsung!
+        attachment_id = self.db.execute_insert(
             query, 
             (message_id, filename, file_path, file_type, file_size)
         )
         
-        if not success:
-            print(f"❌ ERROR: Gagal insert attachment ke database!")
-            print(f"   File: {filename}")
-            print(f"   Message ID: {message_id}")
-            return None
-        
-        # Get last insert ID (hanya jika INSERT berhasil)
-        last_id_query = "SELECT LAST_INSERT_ID() as id"
-        last_id = self.db.execute_read_dict(last_id_query)
-        
-        if last_id and len(last_id) > 0:
-            attachment_id = last_id[0]['id']
-            print(f"✅ Attachment saved to DB: ID={attachment_id}, File={filename}")
+        if attachment_id:
+            print(f"✅ Attachment saved: ID={attachment_id}, File={filename}")
             return attachment_id
-        
-        print(f"❌ ERROR: LAST_INSERT_ID() tidak mengembalikan ID!")
-        return None
+        else:
+            print(f"❌ ERROR: Failed to insert attachment for message_id={message_id}")
+            return None
 
     def get_attachment(self, attachment_id, user_id):
         """

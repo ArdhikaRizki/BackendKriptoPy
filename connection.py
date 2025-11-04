@@ -214,6 +214,50 @@ class DatabaseConnection:
             if connection and connection.is_connected():
                 connection.close()  # Return connection to POOL
 
+    def execute_insert(self, query, params=None):
+        """
+        🆕 Menjalankan INSERT query dan return last insert ID.
+        Khusus untuk INSERT yang butuh AUTO_INCREMENT ID.
+        
+        Args:
+            query: SQL INSERT query string
+            params: Parameter untuk query (opsional)
+            
+        Returns:
+            last_insert_id (int) jika berhasil, None jika gagal
+        """
+        cursor = None
+        connection = None
+        try:
+            # Get connection from POOL
+            connection = self.get_connection()
+            cursor = connection.cursor()
+            
+            if params:
+                cursor.execute(query, params)
+            else:
+                cursor.execute(query)
+            
+            # Commit
+            connection.commit()
+            
+            # Get last insert ID dari cursor (PENTING: dari cursor yang sama!)
+            last_id = cursor.lastrowid
+            
+            print(f"✓ INSERT berhasil: last_insert_id={last_id}")
+            return last_id
+            
+        except Error as e:
+            print(f"✗ Error execute INSERT: {e}")
+            if connection:
+                connection.rollback()
+            return None
+        finally:
+            if cursor:
+                cursor.close()
+            if connection and connection.is_connected():
+                connection.close()  # Return connection to POOL
+
 
 # Helper function untuk koneksi cepat
 def get_db_connection(host="localhost", user="root", password="", database="test", port=3306):
