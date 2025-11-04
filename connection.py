@@ -36,7 +36,10 @@ class DatabaseConnection:
                 user=self.user,
                 password=self.password,
                 database=self.database,
-                port=self.port
+                port=self.port,
+                autocommit=True,  # ← AUTO COMMIT setiap query!
+                pool_name="mypool",
+                pool_size=5
             )
             if self.connection.is_connected():
                 print(f"✓ Koneksi ke MySQL database '{self.database}' berhasil")
