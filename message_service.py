@@ -121,16 +121,11 @@ class MessageService:
             u.username as sender_username,
             u.email as sender_email,
             m.message_text,
-            m.created_at,
-            a.id as attachment_id,
-            a.filename as attachment_filename,
-            a.file_type as attachment_file_type,
-            a.file_size as attachment_file_size
+            m.created_at
         FROM messages m
         JOIN users u ON m.sender_id = u.id
-        LEFT JOIN message_attachments a ON m.id = a.message_id
         WHERE m.receiver_id = %s
-        ORDER BY m.created_at DESC, a.id ASC
+        ORDER BY m.created_at DESC
         LIMIT %s OFFSET %s
         """
 
