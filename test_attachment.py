@@ -10,15 +10,36 @@ from message_service import MessageService
 db = get_db_connection(**config.get_db_config())
 message_service = MessageService(db)
 
-# Test data (ganti dengan message_id yang valid dari database kamu)
-test_message_id = 1  # Ganti dengan ID message yang ada di database
+print("\n" + "="*60)
+print("🔍 Step 1: Cari message ID yang VALID")
+print("="*60)
+
+# Cari message yang ada di database
+check_query = "SELECT id, sender_id, receiver_id, created_at FROM messages ORDER BY id DESC LIMIT 5"
+messages = db.execute_read_dict(check_query)
+
+if not messages or len(messages) == 0:
+    print("❌ TIDAK ADA MESSAGE di database!")
+    print("   Silakan kirim message dulu lewat API /api/messages/send")
+    db.disconnect()
+    exit(1)
+
+print(f"✅ Ditemukan {len(messages)} message di database:")
+for msg in messages:
+    print(f"   ID={msg['id']}, sender={msg['sender_id']}, receiver={msg['receiver_id']}, created={msg['created_at']}")
+
+# Ambil ID message terbaru
+test_message_id = messages[0]['id']
+print(f"\n✅ Akan test dengan message_id = {test_message_id}")
+
+# Test data
 test_filename = "test_debug.pdf"
 test_file_path = "uploads/message_attachments/test_debug.pdf"
 test_file_type = "document"
 test_file_size = 12345
 
 print("\n" + "="*60)
-print("🧪 TESTING add_attachment() Function")
+print("🧪 Step 2: Testing add_attachment() Function")
 print("="*60)
 
 # Call add_attachment
@@ -43,7 +64,7 @@ else:
 
 # Verify di database
 print("\n" + "="*60)
-print("🔍 Verifying in Database...")
+print("🔍 Step 3: Verifying in Database...")
 print("="*60)
 
 verify_query = "SELECT * FROM message_attachments ORDER BY id DESC LIMIT 5"
