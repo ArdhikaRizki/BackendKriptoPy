@@ -5,6 +5,7 @@ Modul untuk mengelola koneksi database MySQL
 
 import mysql.connector
 from mysql.connector import Error
+from mysql.connector.pooling import MySQLConnectionPool
 
 
 class DatabaseConnection:
@@ -12,7 +13,7 @@ class DatabaseConnection:
     
     def __init__(self, host="localhost", user="root", password="", database="test", port=3306):
         """
-        Inisialisasi koneksi database.
+        Inisialisasi koneksi database dengan CONNECTION POOL.
         
         Args:
             host: Host database (default: localhost)
@@ -27,26 +28,26 @@ class DatabaseConnection:
         self.database = database
         self.port = port
         self.connection = None
+        self.pool = None  # Connection pool
     
     def connect(self):
-        """Membuat koneksi ke database MySQL."""
+        """Membuat CONNECTION POOL ke database MySQL (bukan single connection)."""
         try:
-            self.connection = mysql.connector.connect(
+            # Create connection pool with 5-10 connections
+            self.pool = MySQLConnectionPool(
+                pool_name="kripto_pool",
+                pool_size=10,  # Max 10 concurrent connections
+                pool_reset_session=True,  # Reset session setiap ambil connection
                 host=self.host,
                 user=self.user,
                 password=self.password,
                 database=self.database,
                 port=self.port,
-                autocommit=True  # ← AUTO COMMIT setiap query!
+                autocommit=True  # AUTO COMMIT setiap query
             )
-            if self.connection.is_connected():
-                # Set isolation level to READ COMMITTED
-                cursor = self.connection.cursor()
-                cursor.execute("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED")
-                cursor.close()
-                
-                print(f"✓ Koneksi ke MySQL database '{self.database}' berhasil")
-                return self.connection
+            
+            print(f"✓ Connection Pool ke MySQL database '{self.database}' berhasil (pool_size=10)")
+            return self.pool
         except Error as e:
             print(f"✗ Error koneksi database: {e}")
             return None
@@ -58,14 +59,17 @@ class DatabaseConnection:
             print("✓ Koneksi database ditutup")
     
     def get_connection(self):
-        """Mendapatkan koneksi database."""
-        if not self.connection or not self.connection.is_connected():
-            return self.connect()
-        return self.connection
+        """Mendapatkan koneksi dari pool (bukan shared connection)."""
+        if not self.pool:
+            self.connect()
+        
+        # Get connection dari pool (ini auto-managed, thread-safe)
+        return self.pool.get_connection()
     
     def execute_query(self, query, params=None):
         """
         Menjalankan query (INSERT, UPDATE, DELETE).
+        Ambil connection dari POOL → execute → return to pool.
         
         Args:
             query: SQL query string
@@ -75,7 +79,9 @@ class DatabaseConnection:
             True jika berhasil, False jika gagal
         """
         cursor = None
+        connection = None
         try:
+            # Get connection from POOL (bukan buat baru!)
             connection = self.get_connection()
             cursor = connection.cursor()
             
@@ -84,22 +90,26 @@ class DatabaseConnection:
             else:
                 cursor.execute(query)
             
+            # Autocommit already enabled in pool config
             connection.commit()
             print("✓ Query berhasil dijalankan")
             return True
             
         except Error as e:
             print(f"✗ Error execute query: {e}")
-            if self.connection:
-                self.connection.rollback()
+            if connection:
+                connection.rollback()
             return False
         finally:
             if cursor:
                 cursor.close()
+            if connection and connection.is_connected():
+                connection.close()  # Return connection to POOL (bukan destroy!)
     
     def execute_read_query(self, query, params=None):
         """
         Menjalankan query SELECT dan mengembalikan hasil.
+        Ambil connection dari POOL → execute → return to pool.
         
         Args:
             query: SQL query string
@@ -109,7 +119,9 @@ class DatabaseConnection:
             List of tuples atau None jika error
         """
         cursor = None
+        connection = None
         try:
+            # Get connection from POOL (bukan buat baru!)
             connection = self.get_connection()
             cursor = connection.cursor()
             
@@ -127,10 +139,13 @@ class DatabaseConnection:
         finally:
             if cursor:
                 cursor.close()
+            if connection and connection.is_connected():
+                connection.close()  # Return connection to POOL
     
     def execute_read_one(self, query, params=None):
         """
         Menjalankan query SELECT dan mengembalikan satu hasil.
+        Ambil connection dari POOL → execute → return to pool.
         
         Args:
             query: SQL query string
@@ -140,7 +155,9 @@ class DatabaseConnection:
             Single tuple atau None
         """
         cursor = None
+        connection = None
         try:
+            # Get connection from POOL (bukan buat baru!)
             connection = self.get_connection()
             cursor = connection.cursor()
             
@@ -158,10 +175,13 @@ class DatabaseConnection:
         finally:
             if cursor:
                 cursor.close()
+            if connection and connection.is_connected():
+                connection.close()  # Return connection to POOL
     
     def execute_read_dict(self, query, params=None):
         """
         Menjalankan query SELECT dan mengembalikan hasil sebagai dictionary.
+        Ambil connection dari POOL → execute → return to pool.
         
         Args:
             query: SQL query string
@@ -171,7 +191,9 @@ class DatabaseConnection:
             List of dictionaries
         """
         cursor = None
+        connection = None
         try:
+            # Get connection from POOL (bukan buat baru!)
             connection = self.get_connection()
             cursor = connection.cursor(dictionary=True)
             
@@ -189,6 +211,8 @@ class DatabaseConnection:
         finally:
             if cursor:
                 cursor.close()
+            if connection and connection.is_connected():
+                connection.close()  # Return connection to POOL
 
 
 # Helper function untuk koneksi cepat

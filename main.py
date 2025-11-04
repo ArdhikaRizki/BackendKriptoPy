@@ -46,16 +46,16 @@ message_service = MessageService(db)
 
 
 # Force commit after every request
-@app.after_request
-def after_request(response):
-    """Force commit setelah setiap request"""
-    try:
-        if db.connection and db.connection.is_connected():
-            # Force commit untuk ensure semua changes tersimpan
-            db.connection.commit()
-    except Exception as e:
-        print(f"⚠️ After request commit error: {e}")
-    return response
+# @app.after_request
+# def after_request(response):
+#     """Force commit setelah setiap request"""
+#     try:
+#         if db.connection and db.connection.is_connected():
+#             # Force commit untuk ensure semua changes tersimpan
+#             db.connection.commit()
+#     except Exception as e:
+#         print(f"⚠️ After request commit error: {e}")
+#     return response
 
 
 @app.route('/')
