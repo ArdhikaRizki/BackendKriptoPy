@@ -121,11 +121,16 @@ class MessageService:
             u.username as sender_username,
             u.email as sender_email,
             m.message_text,
-            m.created_at
+            m.created_at,
+            a.id as attachment_id,
+            a.filename as attachment_filename,
+            a.file_type as attachment_file_type,
+            a.file_size as attachment_file_size
         FROM messages m
         JOIN users u ON m.sender_id = u.id
+        LEFT JOIN message_attachments a ON m.id = a.message_id
         WHERE m.receiver_id = %s
-        ORDER BY m.created_at DESC
+        ORDER BY m.created_at DESC, a.id ASC
         LIMIT %s OFFSET %s
         """
 
@@ -472,25 +477,36 @@ class MessageService:
             file_size: Ukuran file (bytes)
         
         Returns:
-            ID attachment yang baru dibuat
+            ID attachment yang baru dibuat, atau None jika gagal
         """
         query = """
         INSERT INTO message_attachments 
-        (message_id, filename, file_path, file_type, file_size, created_at)
-        VALUES (%s, %s, %s, %s, %s, NOW())
+        (message_id, filename, file_path, file_type, file_size)
+        VALUES (%s, %s, %s, %s, %s)
         """
         
-        result = self.db.execute_query(
+        # ✅ CEK hasil execute_query (True/False)
+        success = self.db.execute_query(
             query, 
             (message_id, filename, file_path, file_type, file_size)
         )
         
-        # Get last insert ID
+        if not success:
+            print(f"❌ ERROR: Gagal insert attachment ke database!")
+            print(f"   File: {filename}")
+            print(f"   Message ID: {message_id}")
+            return None
+        
+        # Get last insert ID (hanya jika INSERT berhasil)
         last_id_query = "SELECT LAST_INSERT_ID() as id"
         last_id = self.db.execute_read_dict(last_id_query)
         
-        if last_id:
-            return last_id[0]['id']
+        if last_id and len(last_id) > 0:
+            attachment_id = last_id[0]['id']
+            print(f"✅ Attachment saved to DB: ID={attachment_id}, File={filename}")
+            return attachment_id
+        
+        print(f"❌ ERROR: LAST_INSERT_ID() tidak mengembalikan ID!")
         return None
 
     def get_attachment(self, attachment_id, user_id):
